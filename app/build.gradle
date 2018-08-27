@@ -42,4 +42,7 @@ dependencies {
     implementation "io.reactivex.rxjava2:rxjava:$rootProject.rxjavaVersion"
     implementation "io.reactivex.rxjava2:rxandroid:$rootProject.rxandroidVersion"
 
+    //butterknife
+    implementation "com.jakewharton:butterknife:$rootProject.ext.butterknife"
+    annotationProcessor "com.jakewharton:butterknife-compiler:$rootProject.ext.butterknife"
 }
