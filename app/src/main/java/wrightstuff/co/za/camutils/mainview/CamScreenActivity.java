@@ -2,10 +2,11 @@ package wrightstuff.co.za.camutils.mainview;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.view.SurfaceView;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
+import wrightstuff.co.za.cameramanager.camera2.CameraUtilsManager;
+import wrightstuff.co.za.cameramanager.camera2.ui.AutoFitTextureView;
 import wrightstuff.co.za.camutils.R;
 import wrightstuff.co.za.camutils.utils.AndroidUtils;
 
@@ -19,8 +20,8 @@ public class CamScreenActivity extends Activity {
     }
 
     @BindView(R.id.cameraView)
-    SurfaceView cameraView;
-    /* CameraUtilsManager manager;*/
+    AutoFitTextureView cameraView;
+    CameraUtilsManager manager;
 
     /**
      * A native method that is implemented by the 'native-lib' native library,
@@ -35,6 +36,8 @@ public class CamScreenActivity extends Activity {
         ButterKnife.bind(this);
         setTitle(stringFromJNI());
 
+        manager = new CameraUtilsManager(CamScreenActivity.this, cameraView);
+
     }
 
     @Override
@@ -43,11 +46,18 @@ public class CamScreenActivity extends Activity {
         AndroidUtils.setSystemUiLowProfile(cameraView); //darkens the screen & hide some of the clutter
         AndroidUtils.checkRequestCameraPermissions(CamScreenActivity.this, cameraView);
 
+        if (manager != null) {
+            manager.onResume();
+        }
+
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        if (manager != null) {
+            manager.onPause();
+        }
 
     }
 

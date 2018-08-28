@@ -40,6 +40,7 @@ dependencies {
     implementation "com.android.support:design:$rootProject.supportlibraries"
     implementation "com.android.support.constraint:constraint-layout:$rootProject.constraint_layout"
 
+    implementation project(path: ':cameramanager')
 
     implementation "io.reactivex.rxjava2:rxjava:$rootProject.rxjavaVersion"
     implementation "io.reactivex.rxjava2:rxandroid:$rootProject.rxandroidVersion"
@@ -49,5 +50,6 @@ dependencies {
     annotationProcessor "com.jakewharton:butterknife-compiler:$rootProject.ext.butterknife"
 
     implementation 'com.otaliastudios:cameraview:1.5.1'
+
 
 }
