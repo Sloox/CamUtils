@@ -1,6 +1,3 @@
 <resources>
     <string name="app_name">Camera Tools</string>
-    <string name="permissions_rationale_camera">Camera Permissions are required for this application</string>
-    <string name="action_ok">Ok</string>
-    <string name="action_grant">grant</string>
 </resources>

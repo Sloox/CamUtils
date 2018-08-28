@@ -7,36 +7,21 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 import wrightstuff.co.za.cameramanager.camera2.CameraUtilsManager;
 import wrightstuff.co.za.cameramanager.camera2.ui.AutoFitTextureView;
+import wrightstuff.co.za.cameramanager.utils.AndroidUtils;
 import wrightstuff.co.za.camutils.R;
-import wrightstuff.co.za.camutils.utils.AndroidUtils;
 
 public class CamScreenActivity extends Activity {
     public static final String TAG = CamScreenActivity.class.getSimpleName();
 
-
-    // Used to load the 'native-lib' library on application startup.
-    static {
-        System.loadLibrary("native-lib");
-    }
-
     @BindView(R.id.cameraView)
     AutoFitTextureView cameraView;
     CameraUtilsManager manager;
-
-    /**
-     * A native method that is implemented by the 'native-lib' native library,
-     * which is packaged with this application.
-     */
-    public native String stringFromJNI();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_cam_screen);
         ButterKnife.bind(this);
-        setTitle(stringFromJNI());
-
-        manager = new CameraUtilsManager(CamScreenActivity.this, cameraView);
 
     }
 
@@ -44,11 +29,14 @@ public class CamScreenActivity extends Activity {
     protected void onResume() {
         super.onResume();
         AndroidUtils.setSystemUiLowProfile(cameraView); //darkens the screen & hide some of the clutter
-        AndroidUtils.checkRequestCameraPermissions(CamScreenActivity.this, cameraView);
-
-        if (manager != null) {
-            manager.onResume();
-        }
+        AndroidUtils.checkRequestCameraPermissions(CamScreenActivity.this, cameraView, () -> {
+            if (manager != null) {
+                manager.onResume();
+            } else {
+                manager = new CameraUtilsManager(CamScreenActivity.this, cameraView);
+                manager.onResume();
+            }
+        });
 
     }
 

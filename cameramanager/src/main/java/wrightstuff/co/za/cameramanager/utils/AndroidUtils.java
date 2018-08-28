@@ -1,4 +1,4 @@
-package wrightstuff.co.za.camutils.utils;
+package wrightstuff.co.za.cameramanager.utils;
 
 import android.Manifest;
 import android.app.Activity;
@@ -8,7 +8,7 @@ import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.view.View;
 
-import wrightstuff.co.za.camutils.R;
+import wrightstuff.co.za.cameramanager.R;
 
 public class AndroidUtils {
     private static final int REQUEST_CAMERA = 0;
@@ -37,13 +37,31 @@ public class AndroidUtils {
         }
     }
 
-    private static boolean checkCameraPermissions(@NonNull Activity activity) {
+    public static void checkRequestCameraPermissions(@NonNull Activity activity, @NonNull View view, @NonNull CameraCallback cameraCallback) {
+        if (checkCameraPermissions(activity)) {
+            cameraCallback.onCameraSuccessCallback();
+            return;
+        }
+        boolean shouldProvideRationale = ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA);
+
+        if (shouldProvideRationale) {
+            Snackbar.make(view, R.string.permissions_rationale_camera, Snackbar.LENGTH_INDEFINITE).setAction(R.string.action_grant, v -> requestCameraPermission(activity)).show();
+        } else {
+            ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA);
+        }
+    }
+
+    public static boolean checkCameraPermissions(@NonNull Activity activity) {
         int permissionState = ActivityCompat.checkSelfPermission(activity, Manifest.permission.CAMERA);
         return permissionState == PackageManager.PERMISSION_GRANTED;
     }
 
     private static void requestCameraPermission(@NonNull Activity activity) {
         ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA);
+    }
+
+    public interface CameraCallback {
+        void onCameraSuccessCallback();
     }
 
 }

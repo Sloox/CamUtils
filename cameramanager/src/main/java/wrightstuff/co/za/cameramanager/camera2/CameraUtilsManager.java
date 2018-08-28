@@ -3,6 +3,7 @@ package wrightstuff.co.za.cameramanager.camera2;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -11,7 +12,6 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
 import android.os.Handler;
@@ -24,6 +24,8 @@ import android.view.TextureView;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
 
+import static wrightstuff.co.za.cameramanager.camera2.ImageProcessor.coerceIn;
+
 /**
  * Camera manager
  * might refactor into smaller parts
@@ -32,34 +34,15 @@ public class CameraUtilsManager {
     private static final String TAG = CameraUtilsManager.class.getSimpleName();
     protected CameraDevice cameraDevice;
     protected CameraCaptureSession cameraCaptureSessions;
-    protected CaptureRequest captureRequest;
     protected CaptureRequest.Builder captureRequestBuilder;
+    /*Image Processor*/
+    ImageProcessor imgProc;
     /*Activity*/
     private WeakReference<Activity> activityWeakReference;
     /*Camera*/
     private String cameraId;
     private Size imageDimension;
-    TextureView.SurfaceTextureListener textureListener = new TextureView.SurfaceTextureListener() {
-        @Override
-        public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
-            //open your camera here
-            openCamera();
-        }
 
-        @Override
-        public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
-            // Transform you image captured size according to the surface width and height
-        }
-
-        @Override
-        public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
-            return false;
-        }
-
-        @Override
-        public void onSurfaceTextureUpdated(SurfaceTexture surface) {
-        }
-    };
     private ImageReader imageReader;
     private boolean mFlashSupported;
     /*BackgroundThread*/
@@ -90,11 +73,25 @@ public class CameraUtilsManager {
             cameraDevice = null;
         }
     };
-    final CameraCaptureSession.CaptureCallback captureCallbackListener = new CameraCaptureSession.CaptureCallback() {
+    private TextureView.SurfaceTextureListener textureListener = new TextureView.SurfaceTextureListener() {
         @Override
-        public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
-            super.onCaptureCompleted(session, request, result);
-            createCameraPreview();
+        public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+            //open your camera here
+            openCamera();
+        }
+
+        @Override
+        public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+            // Transform you image captured size according to the surface width and height
+        }
+
+        @Override
+        public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+            return false;
+        }
+
+        @Override
+        public void onSurfaceTextureUpdated(SurfaceTexture surface) {
         }
     };
 
@@ -107,38 +104,51 @@ public class CameraUtilsManager {
     public void onResume() {
         Log.d(TAG, "onResume");
         startBackgroundThread();
-        startBackgroundThread();
         if (textureView.isAvailable()) {
             openCamera();
         } else {
             textureView.setSurfaceTextureListener(textureListener);
         }
+        if (imgProc != null) {
+            imgProc.onResume();
+        }
     }
 
     @SuppressLint("MissingPermission")
-    private void openCamera() {
+    private boolean openCamera() {
+        Log.d(TAG, "Opening Camera");
+
         CameraManager manager = (CameraManager) activityWeakReference.get().getSystemService(Context.CAMERA_SERVICE);
-        Log.e(TAG, "is camera open");
+        if (manager == null) return false; // we failed to open camera
         try {
             cameraId = manager.getCameraIdList()[0];
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
             StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-            assert map != null;
-            imageDimension = map.getOutputSizes(SurfaceTexture.class)[0];
+            if (map == null) return false; //failed to openCamera
+            imageDimension = coerceIn(map.getOutputSizes(SurfaceTexture.class)[0]);
             manager.openCamera(cameraId, stateCallback, null);
         } catch (CameraAccessException e) {
             Log.e(TAG, "Failed to open Camera - " + e);
+            return false;
         }
+        return true;
     }
 
-    protected void createCameraPreview() {
+    private void createCameraPreview() {
         try {
             SurfaceTexture texture = textureView.getSurfaceTexture();
-            texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight());
+            texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight()); //set preview size
             Surface surface = new Surface(texture);
-            captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            captureRequestBuilder.addTarget(surface);
-            cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
+            captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW); //new request as preview
+
+            //image to process
+            imageReader = ImageReader.newInstance(imageDimension.getWidth(), imageDimension.getWidth(), ImageFormat.JPEG, 2);
+            imgProc = new ImageProcessor(imageDimension, textureView, activityWeakReference.get());
+            imageReader.setOnImageAvailableListener(imgProc.getmImageAvailable(), mBackgroundHandler);
+
+            captureRequestBuilder.addTarget(imageReader.getSurface());
+           // captureRequestBuilder.addTarget(surface);
+            cameraDevice.createCaptureSession(Arrays.asList(imageReader.getSurface()), new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(CameraCaptureSession cameraCaptureSession) {
                     //The camera is already closed
@@ -160,22 +170,71 @@ public class CameraUtilsManager {
         }
     }
 
-    protected void updatePreview() {
+   /* //TODO REMOVE WHEN READY TO DO SO
+    private void oldcreateCameraPreview() {
+        try {
+            SurfaceTexture texture = textureView.getSurfaceTexture();
+            texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight()); //set preview size
+            Surface surface = new Surface(texture);
+            captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW); //new request as preview
+
+            //image to process
+            imageReader = ImageReader.newInstance(imageDimension.getWidth(), imageDimension.getWidth(), ImageFormat.JPEG, 1);
+            imgProc = new ImageProcessor(imageDimension, textureView);
+            imageReader.setOnImageAvailableListener(imgProc.getmImageAvailable(), mBackgroundHandler);
+
+            //captureRequestBuilder.addTarget(surface);
+            captureRequestBuilder.addTarget(imageReader.getSurface());
+            cameraDevice.createCaptureSession(Arrays.asList(surface, imageReader.getSurface()), new CameraCaptureSession.StateCallback() {
+                @Override
+                public void onConfigured(CameraCaptureSession cameraCaptureSession) {
+                    //The camera is already closed
+                    if (null == cameraDevice) {
+                        return;
+                    }
+                    // When the session is ready, we start displaying the preview.
+                    cameraCaptureSessions = cameraCaptureSession;
+                    updatePreview();
+                }
+
+                @Override
+                public void onConfigureFailed(CameraCaptureSession cameraCaptureSession) {
+                    Log.d(TAG, "captureSession - ConfigurationFailed ");
+                }
+            }, null);
+        } catch (CameraAccessException e) {
+            Log.e(TAG, "createCameraPreview()->Failed to access Camera - " + e);
+        }
+    }*/
+
+    /*Callbacks*/
+
+    private void updatePreview() {
         if (null == cameraDevice) {
             Log.e(TAG, "updatePreview error, return");
         }
-        captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+        captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
         try {
-            cameraCaptureSessions.setRepeatingRequest(captureRequestBuilder.build(), null , mBackgroundHandler);
+            cameraCaptureSessions.setRepeatingRequest(captureRequestBuilder.build(), null, mBackgroundHandler);
         } catch (CameraAccessException e) {
             Log.e(TAG, "updatePreview->Failed to access Camera - " + e);
         }
     }
 
-    /*Callbacks*/
-
     public void onPause() {
         Log.d(TAG, "onPause");
+
+        if (imgProc != null) {
+            imgProc.onPause();
+        }
+        if (null != imageReader) {
+            imageReader.close();
+            imageReader = null;
+        }
+        if (null != cameraCaptureSessions) {
+            cameraCaptureSessions.close();
+            cameraCaptureSessions = null;
+        }
         stopBackgroundThread();
         closeCamera();
     }
@@ -188,20 +247,22 @@ public class CameraUtilsManager {
     }
 
     /*Threads*/
-    protected void startBackgroundThread() {
+    private void startBackgroundThread() {
         mBackgroundThread = new HandlerThread("Camera Background Thread");
         mBackgroundThread.start();
         mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
     }
 
-    protected void stopBackgroundThread() {
-        mBackgroundThread.quitSafely();
-        try {
-            mBackgroundThread.join();
-            mBackgroundThread = null;
-            mBackgroundHandler = null;
-        } catch (InterruptedException e) {
-            Log.e(TAG, "Thread failed to stopped - " + e);
+    private void stopBackgroundThread() {
+        if (mBackgroundThread != null) {
+            mBackgroundThread.quitSafely();
+            try {
+                mBackgroundThread.join();
+                mBackgroundThread = null;
+                mBackgroundHandler = null;
+            } catch (InterruptedException e) {
+                Log.e(TAG, "Thread failed to stopped - " + e);
+            }
         }
     }
 }

@@ -8,9 +8,18 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
-
+        externalNativeBuild {
+            cmake {
+                cppFlags ""
+            }
+        }
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 
     buildTypes {
@@ -23,9 +32,19 @@ android {
         }
     }
 
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+        }
+    }
+
 }
 
 dependencies {
+    implementation "com.android.support:appcompat-v7:$rootProject.supportlibraries"
+    implementation "com.android.support:design:$rootProject.supportlibraries"
+    implementation "com.android.support.constraint:constraint-layout:$rootProject.constraint_layout"
+
     testImplementation "junit:junit:$rootProject.junit"
     androidTestImplementation "com.android.support.test:runner:$rootProject.runner"
     androidTestImplementation "com.android.support.test.espresso:espresso-core:$rootProject.espresso_core"
