@@ -144,9 +144,10 @@ public class CameraUtilsManager {
             Surface surface = new Surface(texture);
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW); //new request as preview
 
+            activityWeakReference.get().runOnUiThread(() -> textureView.setAspectRatio(imageDimension.getWidth(), imageDimension.getHeight()));
             //image to process
             imageReader = ImageReader.newInstance(imageDimension.getWidth(), imageDimension.getWidth(), ImageFormat.JPEG, 2);
-            imgProc = new ImageProcessor(imageDimension, textureView, activityWeakReference.get(), characteristics);
+            imgProc = new ImageProcessor(textureView, activityWeakReference.get(), characteristics);
             imageReader.setOnImageAvailableListener(imgProc.getmImageAvailable(), mBackgroundHandler);
 
             captureRequestBuilder.addTarget(imageReader.getSurface());

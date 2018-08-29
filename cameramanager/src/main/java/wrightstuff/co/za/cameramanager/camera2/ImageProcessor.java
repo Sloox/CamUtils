@@ -5,7 +5,6 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
-import android.graphics.Point;
 import android.hardware.camera2.CameraCharacteristics;
 import android.media.Image;
 import android.media.ImageReader;
@@ -33,24 +32,17 @@ public class ImageProcessor {
     private WeakReference<Activity> activityWeakReference;
     private CameraCharacteristics cameraCharacteristics;
 
-    private int mHeight, mWidth;
-
-    private volatile boolean WORKLOCK = false; //added to bypass background thread attempting to continue working
+    private volatile boolean WORKLOCK; //added to bypass background thread attempting to continue working
 
     private ImageReader.OnImageAvailableListener mImageAvailable;
     private AutoFitTextureView mTextureView;
     private Matrix rotationMatrix;
     private Bitmap screenBitmap;
 
-    public ImageProcessor(Size imageDimen, AutoFitTextureView mTextureView, Activity activity, CameraCharacteristics cameraCharacteristics) {
+    public ImageProcessor(AutoFitTextureView mTextureView, Activity activity, CameraCharacteristics cameraCharacteristics) {
         this.mTextureView = mTextureView;
         activityWeakReference = new WeakReference<>(activity);
         this.cameraCharacteristics = cameraCharacteristics;
-
-        if (imageDimen != null) {
-            mHeight = imageDimen.getHeight();
-            mWidth = imageDimen.getWidth();
-        }
         WORKLOCK = true;
     }
 
@@ -147,9 +139,10 @@ public class ImageProcessor {
                 ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                 byte[] bytes = new byte[buffer.capacity()];
                 buffer.get(bytes);
-                a.addSplit("decodeStart()");
+                a.addSplit("->decodeStart()");
                 screenBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
-                a.addSplit("decodeEnd()");
+                // opts.inBitmap = screenBitmap;
+                a.addSplit("->decodeEnd()");
 
                 if (screenBitmap != null && mTextureView.isAvailable()) {
                     Canvas canvas = mTextureView.lockCanvas();
@@ -158,77 +151,51 @@ public class ImageProcessor {
                         mTextureView.unlockCanvasAndPost(canvas);
                     }
                 }
-                a.addSplit("getRGBFromPlanes()");
-                a.dumpToLog();
-
                 image.close();
+                a.addSplit("-> mImageAvailable- end");
+                a.dumpToLog();
             };
         }
         return mImageAvailable;
     }
 
     private void handleCanvasRotation(Canvas canvas, Bitmap bitmap) {
+        //we have Image, Canvas and Tetureview
+        boolean mustRot = isMustRotate();
+        if (mustRot) {
+            canvas.save();
+            canvas.rotate(90, canvas.getWidth() / 2, canvas.getHeight() / 2);
+            canvas.drawBitmap(bitmap, null, canvas.getClipBounds(), null);
+            canvas.restore();
+        } else {
+            canvas.drawBitmap(bitmap, 0, 0, null);//orientation is correct
+        }
+    }
+
+    private boolean isMustRotate() {
         int displayRotation = activityWeakReference.get().getWindowManager().getDefaultDisplay().getRotation();
         int mSensorOrientation = cameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-        boolean swappedDimensions = false;
+        boolean mustRotate = false;
         switch (displayRotation) {
             case Surface.ROTATION_0:
             case Surface.ROTATION_180:
                 if (mSensorOrientation == 90 || mSensorOrientation == 270) {
-                    swappedDimensions = true;
+                    mustRotate = true;
                 }
                 break;
             case Surface.ROTATION_90:
             case Surface.ROTATION_270:
                 if (mSensorOrientation == 0 || mSensorOrientation == 180) {
-                    swappedDimensions = true;
+                    mustRotate = true;
                 }
                 break;
             default:
                 Log.e(TAG, "Display rotation is invalid: " + displayRotation);
         }
-        Point displaySize = new Point();
-        activityWeakReference.get().getWindowManager().getDefaultDisplay().getSize(displaySize);
-        int rotatedPreviewWidth = mWidth;
-        int rotatedPreviewHeight = mHeight;
-
-        int maxPreviewWidth = mTextureView.getWidth();
-        int maxPreviewHeight = mTextureView.getHeight();
-
-        int rotatedPreviewWidthX = rotatedPreviewWidth / 2;
-        int rotatedPreviewWHeightY = rotatedPreviewHeight / 2;
-
-        if (swappedDimensions) {
-            rotatedPreviewWidth = mHeight;
-            rotatedPreviewHeight = mWidth;
-            maxPreviewWidth = displaySize.y;
-            maxPreviewHeight = displaySize.x;
-        }
-
-        if (maxPreviewWidth > MAX_PREVIEW_WIDTH) {
-            maxPreviewWidth = MAX_PREVIEW_WIDTH;
-        }
-
-        if (maxPreviewHeight > MAX_PREVIEW_HEIGHT) {
-            maxPreviewHeight = MAX_PREVIEW_HEIGHT;
-        }
-
-        if (swappedDimensions) {
-            canvas.save();
-            canvas.rotate(90, rotatedPreviewWidthX, rotatedPreviewWHeightY);
-            float scalex = ((maxPreviewWidth + rotatedPreviewWidth) / maxPreviewWidth);
-            float scaley = ((maxPreviewHeight + maxPreviewHeight) / maxPreviewHeight);
-            canvas.scale(scalex, scaley, rotatedPreviewWidthX, rotatedPreviewWHeightY);
-            canvas.drawBitmap(bitmap, 0, 0, null);
-            canvas.restore();
-        } else {
-            canvas.drawBitmap(bitmap, 0, 0, null);
-        }
-
-
+        return mustRotate;
     }
 
-    private void getRGBFromPlanes(Image.Plane[] planes) {
+    private void getRGBFromPlanes(Image.Plane[] planes, int mHeight) {
         try {
             ByteBuffer yPlane = planes[0].getBuffer();
             ByteBuffer uPlane = planes[1].getBuffer();
@@ -296,7 +263,7 @@ public class ImageProcessor {
 
     public Matrix getRotationMatrix() {
         if (rotationMatrix == null) {
-            rotationMatrix = CameraConfig.configurePictureTransform(activityWeakReference.get(), mTextureView.getWidth(), mTextureView.getHeight(), new Size(mWidth, mHeight));
+            rotationMatrix = CameraConfig.configurePictureTransform(activityWeakReference.get(), mTextureView.getWidth(), mTextureView.getHeight(), mTextureView);
         }
         return rotationMatrix;
     }

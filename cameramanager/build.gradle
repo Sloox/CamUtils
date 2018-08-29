@@ -13,6 +13,9 @@ android {
                 cppFlags ""
             }
         }
+        renderscriptTargetApi rootProject.ext.minSdkVersion
+        renderscriptSupportModeEnabled true
+
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
     }
