@@ -18,14 +18,14 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-import wrightstuff.co.za.cameramanager.BuildConfig;
 import wrightstuff.co.za.cameramanager.camera2.ui.AutoFitTextureView;
+import wrightstuff.co.za.cameramanager.renderscript.RenderscriptHelper;
 import wrightstuff.co.za.cameramanager.utils.WorkLogger;
 
 public class ImageProcessor {
 
-    public static final int MAX_PREVIEW_HEIGHT = 1080;
-    public static final int MAX_PREVIEW_WIDTH = 1920;
+    public static final int MAX_PREVIEW_HEIGHT = 900/*1080*/;
+    public static final int MAX_PREVIEW_WIDTH = 1440/*1920*/;
     private static final String TAG = ImageProcessor.class.getSimpleName();
     private byte[] mRgbBuffer;
     private WeakReference<Activity> activityWeakReference;
@@ -38,11 +38,26 @@ public class ImageProcessor {
     private Bitmap screenBitmap;
     private Boolean rotatePreview;
 
+    private RenderscriptHelper rsHelper;
+    private int choice;
+    private float saturation = 2, blur = 5;
+
     public ImageProcessor(AutoFitTextureView mTextureView, Activity activity, CameraCharacteristics cameraCharacteristics) {
         this.mTextureView = mTextureView;
         activityWeakReference = new WeakReference<>(activity);
         this.cameraCharacteristics = cameraCharacteristics;
         WORKLOCK = true;
+        rsHelper = new RenderscriptHelper(activity);
+        mTextureView.setOnClickListener(v -> {
+            saturation = saturation++ + 10;
+            saturation = (saturation % 250) + 1;
+            blur = blur++;
+            blur = (blur % 25) + 1;
+        });
+        mTextureView.setOnLongClickListener(v -> {
+            choice = (++choice) % 5;
+            return false;
+        });
     }
 
     /**
@@ -119,7 +134,7 @@ public class ImageProcessor {
     public ImageReader.OnImageAvailableListener getmImageAvailable() {
         if (mImageAvailable == null) {
             mImageAvailable = reader -> {
-                WorkLogger a = new WorkLogger(TAG, "mImageAvailable", !BuildConfig.DEBUG);
+                WorkLogger a = new WorkLogger(TAG, "mImageAvailable", true);
                 Image image;
                 try {
                     image = reader.acquireLatestImage();
@@ -138,11 +153,11 @@ public class ImageProcessor {
                 ByteBuffer buffer = image.getPlanes()[0].getBuffer();
                 byte[] bytes = new byte[buffer.capacity()];
                 buffer.get(bytes);
-                a.addSplit("->decodeStart()");
                 screenBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
-                // opts.inBitmap = screenBitmap;
-                a.addSplit("->decodeEnd()");
-                a.addSplit("->drawingstart()");
+
+                /*Enter screen manipulation here*/
+                screenBitmap = manipulateBitmap(screenBitmap);
+
                 if (screenBitmap != null && mTextureView.isAvailable()) {
                     Canvas canvas = mTextureView.lockCanvas();
                     if (canvas != null) {
@@ -157,6 +172,21 @@ public class ImageProcessor {
             };
         }
         return mImageAvailable;
+    }
+
+    private Bitmap manipulateBitmap(Bitmap bitmap) {
+        switch (choice) {
+            case 1:
+                return rsHelper.blurBitmap(bitmap, blur);
+            case 2:
+                return rsHelper.histogramEqualization(bitmap);
+            case 3:
+                return rsHelper.saturation(bitmap, saturation);
+            case 4:
+                return rsHelper.mono(bitmap);
+            default:
+                return bitmap;
+        }
     }
 
     private void handleCanvasRotation(Canvas canvas, Bitmap bitmap) {
@@ -175,7 +205,7 @@ public class ImageProcessor {
     }
 
     private boolean isMustRotate() {
-        int displayRotation = activityWeakReference.get().getWindowManager().getDefaultDisplay().getRotation();
+        int displayRotation = getActivity().getWindowManager().getDefaultDisplay().getRotation();
         int mSensorOrientation = cameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
         boolean mustRotate = false;
         switch (displayRotation) {
@@ -267,6 +297,10 @@ public class ImageProcessor {
 
     public void onResume() {
         WORKLOCK = true;
+    }
+
+    public Activity getActivity() {
+        return activityWeakReference.get();
     }
 
     /**

@@ -31,6 +31,7 @@ ext {
     minSdkVersion = 21 //camera 2
     targetSdkVersion = 27
     compileSdkVersion = 27
+    renderscript = 24
     buildToolsVersion = '28.0.1'
     constraint_layout = '1.1.2'
     supportlibraries = '27.1.1'
