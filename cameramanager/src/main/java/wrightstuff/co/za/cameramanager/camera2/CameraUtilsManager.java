@@ -24,6 +24,8 @@ import android.view.TextureView;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
 
+import wrightstuff.co.za.cameramanager.camera2.ui.AutoFitTextureView;
+
 import static wrightstuff.co.za.cameramanager.camera2.ImageProcessor.coerceIn;
 
 /**
@@ -32,11 +34,12 @@ import static wrightstuff.co.za.cameramanager.camera2.ImageProcessor.coerceIn;
  */
 public class CameraUtilsManager {
     private static final String TAG = CameraUtilsManager.class.getSimpleName();
-    protected CameraDevice cameraDevice;
-    protected CameraCaptureSession cameraCaptureSessions;
-    protected CaptureRequest.Builder captureRequestBuilder;
     /*Image Processor*/
     ImageProcessor imgProc;
+    private CameraDevice cameraDevice;
+    private CameraCaptureSession cameraCaptureSessions;
+    private CaptureRequest.Builder captureRequestBuilder;
+    private CameraCharacteristics characteristics;
     /*Activity*/
     private WeakReference<Activity> activityWeakReference;
     /*Camera*/
@@ -49,7 +52,7 @@ public class CameraUtilsManager {
     private Handler mBackgroundHandler;
     private HandlerThread mBackgroundThread;
     /*View to draw to*/
-    private TextureView textureView;
+    private AutoFitTextureView textureView;
     /*Camera Callbacks*/
     private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override
@@ -95,7 +98,7 @@ public class CameraUtilsManager {
         }
     };
 
-    public CameraUtilsManager(Activity activity, TextureView textView) {
+    public CameraUtilsManager(Activity activity, AutoFitTextureView textView) {
         activityWeakReference = new WeakReference<>(activity);
         textureView = textView;
         textureView.setSurfaceTextureListener(textureListener);
@@ -122,7 +125,7 @@ public class CameraUtilsManager {
         if (manager == null) return false; // we failed to open camera
         try {
             cameraId = manager.getCameraIdList()[0];
-            CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+            characteristics = manager.getCameraCharacteristics(cameraId);
             StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             if (map == null) return false; //failed to openCamera
             imageDimension = coerceIn(map.getOutputSizes(SurfaceTexture.class)[0]);
@@ -143,11 +146,11 @@ public class CameraUtilsManager {
 
             //image to process
             imageReader = ImageReader.newInstance(imageDimension.getWidth(), imageDimension.getWidth(), ImageFormat.JPEG, 2);
-            imgProc = new ImageProcessor(imageDimension, textureView, activityWeakReference.get());
+            imgProc = new ImageProcessor(imageDimension, textureView, activityWeakReference.get(), characteristics);
             imageReader.setOnImageAvailableListener(imgProc.getmImageAvailable(), mBackgroundHandler);
 
             captureRequestBuilder.addTarget(imageReader.getSurface());
-           // captureRequestBuilder.addTarget(surface);
+            // captureRequestBuilder.addTarget(surface);
             cameraDevice.createCaptureSession(Arrays.asList(imageReader.getSurface()), new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(CameraCaptureSession cameraCaptureSession) {

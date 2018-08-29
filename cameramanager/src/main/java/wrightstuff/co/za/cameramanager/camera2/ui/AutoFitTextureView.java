@@ -1,6 +1,7 @@
 package wrightstuff.co.za.cameramanager.camera2.ui;
 
 import android.content.Context;
+import android.os.Handler;
 import android.util.AttributeSet;
 import android.view.TextureView;
 
