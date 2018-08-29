@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Matrix;
 import android.hardware.camera2.CameraCharacteristics;
 import android.media.Image;
 import android.media.ImageReader;
@@ -36,8 +35,8 @@ public class ImageProcessor {
 
     private ImageReader.OnImageAvailableListener mImageAvailable;
     private AutoFitTextureView mTextureView;
-    private Matrix rotationMatrix;
     private Bitmap screenBitmap;
+    private Boolean rotatePreview;
 
     public ImageProcessor(AutoFitTextureView mTextureView, Activity activity, CameraCharacteristics cameraCharacteristics) {
         this.mTextureView = mTextureView;
@@ -143,7 +142,7 @@ public class ImageProcessor {
                 screenBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
                 // opts.inBitmap = screenBitmap;
                 a.addSplit("->decodeEnd()");
-
+                a.addSplit("->drawingstart()");
                 if (screenBitmap != null && mTextureView.isAvailable()) {
                     Canvas canvas = mTextureView.lockCanvas();
                     if (canvas != null) {
@@ -151,6 +150,7 @@ public class ImageProcessor {
                         mTextureView.unlockCanvasAndPost(canvas);
                     }
                 }
+                a.addSplit("->drawingend()");
                 image.close();
                 a.addSplit("-> mImageAvailable- end");
                 a.dumpToLog();
@@ -161,8 +161,10 @@ public class ImageProcessor {
 
     private void handleCanvasRotation(Canvas canvas, Bitmap bitmap) {
         //we have Image, Canvas and Tetureview
-        boolean mustRot = isMustRotate();
-        if (mustRot) {
+        if (rotatePreview == null) {
+            rotatePreview = isMustRotate();
+        }
+        if (rotatePreview) {
             canvas.save();
             canvas.rotate(90, canvas.getWidth() / 2, canvas.getHeight() / 2);
             canvas.drawBitmap(bitmap, null, canvas.getClipBounds(), null);
@@ -259,19 +261,12 @@ public class ImageProcessor {
         Log.d(TAG, "onPause called");
         mImageAvailable = null;
         WORKLOCK = false;
+        rotatePreview = null;
     }
 
-    public Matrix getRotationMatrix() {
-        if (rotationMatrix == null) {
-            rotationMatrix = CameraConfig.configurePictureTransform(activityWeakReference.get(), mTextureView.getWidth(), mTextureView.getHeight(), mTextureView);
-        }
-        return rotationMatrix;
-    }
 
     public void onResume() {
         WORKLOCK = true;
-        //config change might change the preview
-        rotationMatrix = null;
     }
 
     /**
