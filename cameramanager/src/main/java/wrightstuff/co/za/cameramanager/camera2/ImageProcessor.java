@@ -4,9 +4,12 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.hardware.camera2.CameraCharacteristics;
 import android.media.Image;
 import android.media.ImageReader;
+import android.os.SystemClock;
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
@@ -20,16 +23,17 @@ import java.util.List;
 
 import wrightstuff.co.za.cameramanager.camera2.ui.AutoFitTextureView;
 import wrightstuff.co.za.cameramanager.renderscript.RenderscriptHelper;
-import wrightstuff.co.za.cameramanager.utils.WorkLogger;
 
 public class ImageProcessor {
 
-    public static final int MAX_PREVIEW_HEIGHT = 900/*1080*/;
-    public static final int MAX_PREVIEW_WIDTH = 1440/*1920*/;
+    public static final int MAX_PREVIEW_HEIGHT = 768/*1080*/;
+    public static final int MAX_PREVIEW_WIDTH = 1024/*1920*/;
     private static final String TAG = ImageProcessor.class.getSimpleName();
     private byte[] mRgbBuffer;
     private WeakReference<Activity> activityWeakReference;
     private CameraCharacteristics cameraCharacteristics;
+
+    private int bitmaprenderchoice = 0;
 
     private volatile boolean WORKLOCK; //added to bypass background thread attempting to continue working
 
@@ -40,7 +44,10 @@ public class ImageProcessor {
 
     private RenderscriptHelper rsHelper;
     private int choice;
-    private float saturation = 2, blur = 5;
+    private float saturation = 2, blur = 3;
+    private Bitmap bitmap;
+    private long old;
+    private float bright = 0.1f;
 
     public ImageProcessor(AutoFitTextureView mTextureView, Activity activity, CameraCharacteristics cameraCharacteristics) {
         this.mTextureView = mTextureView;
@@ -49,13 +56,26 @@ public class ImageProcessor {
         WORKLOCK = true;
         rsHelper = new RenderscriptHelper(activity);
         mTextureView.setOnClickListener(v -> {
-            saturation = saturation++ + 10;
-            saturation = (saturation % 250) + 1;
-            blur = blur++;
-            blur = (blur % 25) + 1;
+            switch (choice) {
+                case 1:
+                    blur = (blur++ % 25) + 1;
+                    break;
+                case 3:
+                    saturation = (saturation++ % 250) + 1;
+                    break;
+                case 5:
+                    bright += 0.1;
+                    if (bright > 2.0f) {
+                        bright = 0.1f;
+                    }
+                    break;
+                default:
+                    bitmaprenderchoice = (bitmaprenderchoice++ % 3) + 1;
+            }
+
         });
         mTextureView.setOnLongClickListener(v -> {
-            choice = (++choice) % 5;
+            choice = (++choice) % 8;
             return false;
         });
     }
@@ -134,8 +154,8 @@ public class ImageProcessor {
     public ImageReader.OnImageAvailableListener getmImageAvailable() {
         if (mImageAvailable == null) {
             mImageAvailable = reader -> {
-                WorkLogger a = new WorkLogger(TAG, "mImageAvailable", true);
                 Image image;
+
                 try {
                     image = reader.acquireLatestImage();
                 } catch (IllegalStateException e) {
@@ -149,41 +169,69 @@ public class ImageProcessor {
                     }
                     return;
                 }
+                screenBitmap = getBitmapFromImage(image);
 
-                ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-                byte[] bytes = new byte[buffer.capacity()];
-                buffer.get(bytes);
-                screenBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
-
-                /*Enter screen manipulation here*/
                 screenBitmap = manipulateBitmap(screenBitmap);
 
                 if (screenBitmap != null && mTextureView.isAvailable()) {
                     Canvas canvas = mTextureView.lockCanvas();
                     if (canvas != null) {
                         handleCanvasRotation(canvas, screenBitmap);
+
+                        /*Debug some fps per frame*/
+                        drawText(canvas, "" + 1000 / (SystemClock.elapsedRealtime() - old));
+                        old = SystemClock.elapsedRealtime();
+
                         mTextureView.unlockCanvasAndPost(canvas);
                     }
                 }
-                a.addSplit("->drawingend()");
                 image.close();
-                a.addSplit("-> mImageAvailable- end");
-                a.dumpToLog();
             };
         }
         return mImageAvailable;
     }
 
+    private void drawText(Canvas canvas, String text) {
+        Paint paint = new Paint();
+        paint.setColor(Color.RED);
+        paint.setTextSize(26);
+        canvas.drawText(text, 10, 25, paint);
+    }
+
+    private Bitmap getBitmapFromImage(Image image) {
+       return getBitmapFromBytes(image); //for JPEG also decently fast
+           /* switch (bitmaprenderchoice) {
+                default:
+                    return rsHelper.YUV_420_888_toRGB_speed(image, image.getWidth(), image.getHeight());
+            }*/
+    }
+
+    private Bitmap getBitmapFromBytes(Image image) {
+        ByteBuffer byteBuffer = image.getPlanes()[0].getBuffer();
+        byte[] bytes = new byte[byteBuffer.capacity()];
+        byteBuffer.get(bytes);
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
+    }
+
     private Bitmap manipulateBitmap(Bitmap bitmap) {
         switch (choice) {
+            case 0:
+                return bitmap;
             case 1:
-                return rsHelper.blurBitmap(bitmap, blur);
+                return rsHelper.test(rsHelper.mono(rsHelper.blurBitmap(bitmap, blur)));
             case 2:
-                return rsHelper.histogramEqualization(bitmap);
+                return rsHelper.test(bitmap);
             case 3:
-                return rsHelper.saturation(bitmap, saturation);
+                return rsHelper.blurBitmap(bitmap, blur);
             case 4:
+                return rsHelper.histogramEqualization(bitmap);
+            case 5:
+                return rsHelper.saturation(bitmap, saturation);
+            case 6:
                 return rsHelper.mono(bitmap);
+            case 7:
+                return rsHelper.brightness(bitmap, bright);
+
             default:
                 return bitmap;
         }
@@ -292,6 +340,10 @@ public class ImageProcessor {
         mImageAvailable = null;
         WORKLOCK = false;
         rotatePreview = null;
+        if (bitmap != null) {
+            bitmap.recycle();
+            bitmap = null;
+        }
     }
 
 

@@ -125,11 +125,13 @@ public class CameraUtilsManager {
         if (manager == null) return false; // we failed to open camera
         try {
             cameraId = manager.getCameraIdList()[0];
+            Log.d(TAG, "Cameras available:" + manager.getCameraIdList().length);
             characteristics = manager.getCameraCharacteristics(cameraId);
             StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             if (map == null) return false; //failed to openCamera
             imageDimension = coerceIn(map.getOutputSizes(SurfaceTexture.class)[0]);
             manager.openCamera(cameraId, stateCallback, null);
+            Log.d(TAG, "opencamera() -details:: CameraID:" + cameraId + "; imageDimensions:" + imageDimension.toString());
         } catch (CameraAccessException e) {
             Log.e(TAG, "Failed to open Camera - " + e);
             return false;
@@ -144,8 +146,9 @@ public class CameraUtilsManager {
             Surface surface = new Surface(texture);
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW); //new request as preview
 
-            activityWeakReference.get().runOnUiThread(() -> textureView.setAspectRatio(imageDimension.getWidth(), imageDimension.getHeight()));
+            // activityWeakReference.get().runOnUiThread(() -> textureView.setAspectRatio(imageDimension.getWidth(), imageDimension.getHeight()));
             //image to process
+            //imageReader = ImageReader.newInstance(imageDimension.getWidth(), imageDimension.getWidth(), ImageFormat.YUV_420_888, 3);
             imageReader = ImageReader.newInstance(imageDimension.getWidth(), imageDimension.getWidth(), ImageFormat.JPEG, 2);
             imgProc = new ImageProcessor(textureView, activityWeakReference.get(), characteristics);
             imageReader.setOnImageAvailableListener(imgProc.getmImageAvailable(), mBackgroundHandler);
