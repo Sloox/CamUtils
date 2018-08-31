@@ -1,2 +1,3 @@
 # CamUtils
-A hopefully small re-usable android application that makes use of camera2 and allows for editing and showing of preview frames in realtime. 
+A small reusable camera application that includes my experimentation with camera2 api & Renderscript
+will update the readme with more useful information when i have the time
