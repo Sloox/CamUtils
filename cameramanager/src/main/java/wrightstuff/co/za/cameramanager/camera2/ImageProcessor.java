@@ -10,6 +10,7 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.SystemClock;
+import android.renderscript.Allocation;
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
@@ -45,9 +46,9 @@ public class ImageProcessor {
     private RenderscriptHelper rsHelper;
     private int choice;
     private float saturation = 2, blur = 3;
-    private Bitmap bitmap;
     private long old;
     private float bright = 0.1f;
+    private Allocation.OnBufferAvailableListener bufferReady;
 
     public ImageProcessor(AutoFitTextureView mTextureView, Activity activity, CameraCharacteristics cameraCharacteristics) {
         this.mTextureView = mTextureView;
@@ -151,6 +152,17 @@ public class ImageProcessor {
         return new Size(maxxedWidth, maxxedHeight);
     }
 
+    //todo maybe in rework
+    /*public Allocation.OnBufferAvailableListener getBufferReady(){
+        if (bufferReady==null){
+            bufferReady = a -> {
+                screenBitmap  = rsHelper.YUV_420_888_toRGB_speed()
+                a.copyTo(bitmap);
+            };
+        }
+        return bufferReady;
+    }*/
+
     public ImageReader.OnImageAvailableListener getmImageAvailable() {
         if (mImageAvailable == null) {
             mImageAvailable = reader -> {
@@ -171,9 +183,8 @@ public class ImageProcessor {
                 }
                 screenBitmap = getBitmapFromImage(image);
 
-                screenBitmap = manipulateBitmap(screenBitmap);
-
                 if (screenBitmap != null && mTextureView.isAvailable()) {
+                    screenBitmap = manipulateBitmap(screenBitmap);
                     Canvas canvas = mTextureView.lockCanvas();
                     if (canvas != null) {
                         handleCanvasRotation(canvas, screenBitmap);
@@ -199,18 +210,23 @@ public class ImageProcessor {
     }
 
     private Bitmap getBitmapFromImage(Image image) {
-       return getBitmapFromBytes(image); //for JPEG also decently fast
-           /* switch (bitmaprenderchoice) {
+        return getBitmapFromBytes(image); //for JPEG also decently fast
+         /*   switch (bitmaprenderchoice) {
                 default:
-                    return rsHelper.YUV_420_888_toRGB_speed(image, image.getWidth(), image.getHeight());
+                    return rsHelper.YUV_420_888_toRGB_speed2(image, image.getWidth(), image.getHeight());
             }*/
     }
 
     private Bitmap getBitmapFromBytes(Image image) {
-        ByteBuffer byteBuffer = image.getPlanes()[0].getBuffer();
-        byte[] bytes = new byte[byteBuffer.capacity()];
-        byteBuffer.get(bytes);
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
+        try {
+            ByteBuffer byteBuffer = image.getPlanes()[0].getBuffer();
+            byte[] bytes = new byte[byteBuffer.capacity()];
+            byteBuffer.get(bytes);
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.length, null);
+        } catch (IllegalStateException e) {
+            Log.e(TAG, "Image is closed...");
+        }
+        return null;
     }
 
     private Bitmap manipulateBitmap(Bitmap bitmap) {
@@ -218,9 +234,9 @@ public class ImageProcessor {
             case 0:
                 return bitmap;
             case 1:
-                return rsHelper.test(rsHelper.mono(rsHelper.blurBitmap(bitmap, blur)));
+                return rsHelper.cannyEdgeDetect(bitmap);
             case 2:
-                return rsHelper.test(bitmap);
+                return rsHelper.sobel(bitmap);
             case 3:
                 return rsHelper.blurBitmap(bitmap, blur);
             case 4:
@@ -231,7 +247,8 @@ public class ImageProcessor {
                 return rsHelper.mono(bitmap);
             case 7:
                 return rsHelper.brightness(bitmap, bright);
-
+            case 8:
+                return rsHelper.convolveBitmap(bitmap);
             default:
                 return bitmap;
         }
@@ -242,7 +259,7 @@ public class ImageProcessor {
         if (rotatePreview == null) {
             rotatePreview = isMustRotate();
         }
-        if (rotatePreview) {
+        if (rotatePreview && !bitmap.isRecycled()) {
             canvas.save();
             canvas.rotate(90, canvas.getWidth() / 2, canvas.getHeight() / 2);
             canvas.drawBitmap(bitmap, null, canvas.getClipBounds(), null);
@@ -340,9 +357,9 @@ public class ImageProcessor {
         mImageAvailable = null;
         WORKLOCK = false;
         rotatePreview = null;
-        if (bitmap != null) {
-            bitmap.recycle();
-            bitmap = null;
+        if (screenBitmap != null) {
+            screenBitmap.recycle();
+            screenBitmap = null;
         }
     }
 

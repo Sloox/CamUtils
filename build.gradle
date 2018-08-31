@@ -28,7 +28,7 @@ task clean(type: Delete) {
 
 ext {
     // Sdk and tools
-    minSdkVersion = 21 //camera 2
+    minSdkVersion = 23//camera 2
     targetSdkVersion = 27
     compileSdkVersion = 27
     renderscript = 24

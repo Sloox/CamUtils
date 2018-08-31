@@ -16,6 +16,10 @@ import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.renderscript.Allocation;
+import android.renderscript.Element;
+import android.renderscript.RenderScript;
+import android.renderscript.Type;
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
@@ -143,7 +147,7 @@ public class CameraUtilsManager {
         try {
             SurfaceTexture texture = textureView.getSurfaceTexture();
             texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight()); //set preview size
-            Surface surface = new Surface(texture);
+            Surface surface = new Surface(texture); // to display onto a view
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW); //new request as preview
 
             // activityWeakReference.get().runOnUiThread(() -> textureView.setAspectRatio(imageDimension.getWidth(), imageDimension.getHeight()));
@@ -176,6 +180,52 @@ public class CameraUtilsManager {
             Log.e(TAG, "createCameraPreview()->Failed to access Camera - " + e);
         }
     }
+
+
+    //TODO maybe allocate to a renderscript allocation and handle from there
+    /*private void createCameraPreviewRenderScript() {
+        try {
+            SurfaceTexture texture = textureView.getSurfaceTexture();
+            texture.setDefaultBufferSize(imageDimension.getWidth(), imageDimension.getHeight()); //set preview size
+            captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW); //new request as preview
+            imgProc = new ImageProcessor(textureView, activityWeakReference.get(), characteristics);
+            Allocation alloc = createRenderscriptAlloc(imageDimension.getWidth(), imageDimension.getHeight());
+            alloc.setOnBufferAvailableListener(imgProc.getBufferReady());
+            captureRequestBuilder.addTarget(alloc.getSurface());
+            // captureRequestBuilder.addTarget(surface);
+            cameraDevice.createCaptureSession(Arrays.asList(alloc.getSurface()), new CameraCaptureSession.StateCallback() {
+                @Override
+                public void onConfigured(CameraCaptureSession cameraCaptureSession) {
+                    //The camera is already closed
+                    if (null == cameraDevice) {
+                        return;
+                    }
+                    // When the session is ready, we start displaying the preview.
+                    cameraCaptureSessions = cameraCaptureSession;
+                    updatePreview();
+                }
+
+                @Override
+                public void onConfigureFailed(CameraCaptureSession cameraCaptureSession) {
+                    Log.d(TAG, "captureSession - ConfigurationFailed ");
+                }
+            }, null);
+        } catch (CameraAccessException e) {
+            Log.e(TAG, "createCameraPreview()->Failed to access Camera - " + e);
+        }
+    }*/
+
+    private Allocation createRenderscriptAlloc(int width, int height) {
+        RenderScript rs = RenderScript.create(activityWeakReference.get());
+        Type.Builder yuvTypeBuilder = new Type.Builder(rs, Element.YUV(rs));
+        yuvTypeBuilder.setX(width);
+        yuvTypeBuilder.setY(height);
+        yuvTypeBuilder.setYuvFormat(ImageFormat.YUV_420_888);
+        return Allocation.createTyped(rs, yuvTypeBuilder.create(), Allocation.USAGE_IO_INPUT);
+
+    }
+
+
 
    /* //TODO REMOVE WHEN READY TO DO SO
     private void oldcreateCameraPreview() {

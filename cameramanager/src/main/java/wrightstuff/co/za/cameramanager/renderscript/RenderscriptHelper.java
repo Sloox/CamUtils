@@ -3,24 +3,25 @@ package wrightstuff.co.za.cameramanager.renderscript;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.media.Image;
-import android.support.v8.renderscript.Allocation;
-import android.support.v8.renderscript.Element;
-import android.support.v8.renderscript.RenderScript;
-import android.support.v8.renderscript.Script;
-import android.support.v8.renderscript.ScriptIntrinsicBlur;
-import android.support.v8.renderscript.ScriptIntrinsicConvolve3x3;
-import android.support.v8.renderscript.Type;
+import android.renderscript.Allocation;
+import android.renderscript.Element;
+import android.renderscript.RenderScript;
+import android.renderscript.Script;
+import android.renderscript.ScriptIntrinsicBlur;
+import android.renderscript.ScriptIntrinsicConvolve3x3;
+import android.renderscript.Type;
 
 import java.nio.ByteBuffer;
 
+import wrightstuff.co.za.cameramanager.renderscripttesting.ScriptC_generalrs;
 import wrightstuff.co.za.cameramanager.renderscripttesting.ScriptC_histEq;
-import wrightstuff.co.za.cameramanager.renderscripttesting.ScriptC_saturation;
 import wrightstuff.co.za.cameramanager.renderscripttesting.ScriptC_yuvtorgb;
 
 public class RenderscriptHelper {
     public static final String TAG = RenderscriptHelper.class.getSimpleName();
     public final boolean DISABLEDLOGGING = false;
     RenderScript rs;
+    CannyEdgeEffect cannyEdgeEffect;
 
     /*Globals to speed up the Renderscript*/
     ScriptC_yuvtorgb mYuv420;
@@ -106,16 +107,15 @@ public class RenderscriptHelper {
         }
         return bitmap;
     }
-
-    public Bitmap convolveBitmap(Bitmap bitmap, float[] coeficcents) {
-        //Create allocation from Bitmap //new float[]{1, 0, -1, 2, 0, -2, 1, 0, -1})
+    public Bitmap convolveBitmap(Bitmap bitmap) {
+        //Create allocation from Bitmap //
         Allocation allocation = Allocation.createFromBitmap(rs, bitmap);
         Type t = allocation.getType();
         //Create allocation with the same type
         Allocation convolved = Allocation.createTyped(rs, t);
         //Create script
         ScriptIntrinsicConvolve3x3 convolve3x3 = ScriptIntrinsicConvolve3x3.create(rs, Element.U8_4(rs));
-        convolve3x3.setCoefficients(coeficcents);
+        convolve3x3.setCoefficients(new float[]{1, 0, -1, 2, 0, -2, 1, 0, -1});
         convolve3x3.setInput(allocation);
         convolve3x3.forEach(convolved);
         convolved.copyTo(bitmap);
@@ -131,13 +131,14 @@ public class RenderscriptHelper {
         return bitmap;
     }
 
+
     public Bitmap saturation(Bitmap bitmap, float amount) {
         //Create allocation from Bitmap
         Allocation allocationin = Allocation.createFromBitmap(rs, bitmap);
         Type t = allocationin.getType();
         //Create allocation with the same type
         Allocation saturatedAllocationOut = Allocation.createTyped(rs, t);
-        ScriptC_saturation saturation = new ScriptC_saturation(rs);
+        ScriptC_generalrs saturation = new ScriptC_generalrs(rs);
         saturation.set_saturationValue(amount);
         saturation.forEach_saturation(allocationin, saturatedAllocationOut);
         saturatedAllocationOut.copyTo(bitmap);
@@ -158,7 +159,7 @@ public class RenderscriptHelper {
         Type t = allocationin.getType();
         //Create allocation with the same type
         Allocation monoAllocationOut = Allocation.createTyped(rs, t);
-        ScriptC_saturation saturation = new ScriptC_saturation(rs);
+        ScriptC_generalrs saturation = new ScriptC_generalrs(rs);
         saturation.forEach_mono(allocationin, monoAllocationOut);
         monoAllocationOut.copyTo(bitmap);
 
@@ -179,7 +180,7 @@ public class RenderscriptHelper {
         //Create allocation with the same type
 
         Allocation brightnessOut = Allocation.createTyped(rs, t);
-        ScriptC_saturation saturation = new ScriptC_saturation(rs);
+        ScriptC_generalrs saturation = new ScriptC_generalrs(rs);
         saturation.set_saturationValue(brightness);
         saturation.forEach_brightness(allocationin, brightnessOut);
         brightnessOut.copyTo(bitmap);
@@ -195,21 +196,28 @@ public class RenderscriptHelper {
 
     }
 
+    public Bitmap cannyEdgeDetect(Bitmap bitmap) {
+        if (cannyEdgeEffect == null) {
+            cannyEdgeEffect = new CannyEdgeEffect(rs, bitmap.getWidth(), bitmap.getHeight());
+        }
+        return cannyEdgeEffect.doCanny(bitmap);
+    }
 
-    public Bitmap test(Bitmap bitmap) {
+
+    public Bitmap sobel(Bitmap bitmap) {
         //Create allocation from Bitmap
         Allocation allocationin = Allocation.createFromBitmap(rs, bitmap);
         Type t = allocationin.getType();
         //Create allocation with the same type
 
         Allocation brightnessOut = Allocation.createTyped(rs, t);
-        ScriptC_saturation saturation = new ScriptC_saturation(rs);
+        ScriptC_generalrs saturation = new ScriptC_generalrs(rs);
         saturation.set_gCoeffsx(new float[]{1, 0, -1, 2, 0, -2, 1, 0, -1});
         saturation.set_gCoeffsy(new float[]{1, 2, 1, 0, 0, 0, -1, -2, -1});
         saturation.set_gHeight(bitmap.getHeight());
         saturation.set_gWidth(bitmap.getWidth());
         saturation.set_gIn(allocationin);
-        saturation.forEach_convolve(brightnessOut);
+        saturation.forEach_sobel(brightnessOut);
         brightnessOut.copyTo(bitmap);
         try {
             allocationin.destroy();
@@ -270,7 +278,7 @@ public class RenderscriptHelper {
         Type.Builder typeUcharY = new Type.Builder(rs, Element.U8(rs));
         typeUcharY.setX(yRowStride).setY(height);
 
-         Allocation yAlloc = Allocation.createTyped(rs, typeUcharY.create());
+        Allocation yAlloc = Allocation.createTyped(rs, typeUcharY.create());
         //Allocation yAlloc = getOrReuseAllocationY(typeUcharY);
 
         yAlloc.copyFrom(y);
@@ -301,7 +309,7 @@ public class RenderscriptHelper {
             outBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         }
         Allocation outAlloc = Allocation.createFromBitmap(rs, outBitmap, Allocation.MipmapControl.MIPMAP_NONE, Allocation.USAGE_SCRIPT);
-      //  Allocation outAlloc = getOrReuseAllocationBitmap(outBitmap);
+        //  Allocation outAlloc = getOrReuseAllocationBitmap(outBitmap);
 
         Script.LaunchOptions lo = new Script.LaunchOptions();
         lo.setX(0, width);  // by this we ignore the y’s padding zone, i.e. the right side of x between width and yRowStride
@@ -309,13 +317,13 @@ public class RenderscriptHelper {
 
         mYuv420.forEach_doConvert(outAlloc, lo);
         outAlloc.copyTo(outBitmap);
-        try{
+        try {
             outAlloc.destroy();
             uAlloc.destroy();
             vAlloc.destroy();
             yAlloc.destroy();
             rs.destroy();
-        } catch (Exception e){
+        } catch (Exception e) {
 
         }
 
@@ -376,7 +384,7 @@ public class RenderscriptHelper {
         mYuv420.set_uvRowStride(uvRowStride);
         mYuv420.set_uvPixelStride(uvPixelStride);
         if (outBitmap == null) {
-            outBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            outBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_4444);
         }
         //Allocation outAlloc = Allocation.createFromBitmap(rs, outBitmap, Allocation.MipmapControl.MIPMAP_NONE, Allocation.USAGE_SCRIPT);
         Allocation outAlloc = getOrReuseAllocationBitmap(outBitmap);

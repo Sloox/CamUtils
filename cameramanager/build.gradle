@@ -10,11 +10,14 @@ android {
         versionName "1.0"
         externalNativeBuild {
             cmake {
-                cppFlags ""
+                cppFlags "-O3"
             }
         }
+        ndk {
+            abiFilters 'x86', 'armeabi-v7a'
+        }
         renderscriptTargetApi rootProject.ext.renderscript
-        renderscriptSupportModeEnabled true
+        renderscriptSupportModeEnabled false
 
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
